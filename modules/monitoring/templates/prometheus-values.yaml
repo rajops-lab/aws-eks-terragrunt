@@ -1,0 +1,297 @@
+# Prometheus Stack Configuration
+# kube-prometheus-stack values
+
+# Global settings
+fullnameOverride: "prometheus"
+
+# Prometheus Operator
+prometheusOperator:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+
+# Prometheus Server
+prometheus:
+  enabled: true
+  prometheusSpec:
+    retention: ${prometheus_retention}
+    retentionSize: "45GiB"
+    
+    # Resource limits
+    resources:
+      limits:
+        cpu: 2
+        memory: 8Gi
+      requests:
+        cpu: 500m
+        memory: 2Gi
+    
+    # Storage configuration
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: ${prometheus_storage_size}
+    
+    # Service Monitor selector
+    serviceMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    
+    # Rule selector
+    ruleSelectorNilUsesHelmValues: false
+    ruleSelector: {}
+    ruleNamespaceSelector: {}
+    
+    # Additional scrape configs for external targets
+    additionalScrapeConfigs: []
+    
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+
+  service:
+    type: ClusterIP
+    port: 9090
+
+# Alertmanager
+alertmanager:
+  enabled: true
+  alertmanagerSpec:
+    # Resource limits
+    resources:
+      limits:
+        cpu: 200m
+        memory: 200Mi
+      requests:
+        cpu: 100m
+        memory: 100Mi
+    
+    # Storage configuration
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: ${alertmanager_storage_size}
+    
+    # Security context
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 2000
+
+  service:
+    type: ClusterIP
+    port: 9093
+
+  # Default configuration
+  config:
+    global:
+      smtp_smarthost: 'localhost:587'
+      smtp_from: 'alertmanager@${environment}.${cluster_name}'
+    
+    route:
+      group_by: ['alertname', 'cluster', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'web.hook'
+    
+    receivers:
+    - name: 'web.hook'
+      webhook_configs:
+      - url: 'http://localhost:5001/'
+        send_resolved: true
+
+# Grafana
+grafana:
+  enabled: true
+  
+  # Admin credentials
+  adminPassword: ${grafana_admin_password}
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 200m
+      memory: 200Mi
+    requests:
+      cpu: 100m
+      memory: 100Mi
+  
+  # Persistence
+  persistence:
+    type: pvc
+    enabled: true
+    storageClassName: gp3
+    accessModes:
+      - ReadWriteOnce
+    size: ${grafana_storage_size}
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+  
+  # Ingress configuration
+  ingress:
+    enabled: ${grafana_ingress_enabled}
+    ingressClassName: nginx
+    hosts:
+      - ${grafana_ingress_host}
+    tls: []
+  
+  # Grafana configuration
+  grafana.ini:
+    server:
+      domain: ${grafana_ingress_host}
+      root_url: "http://${grafana_ingress_host}"
+    
+    security:
+      admin_user: admin
+      admin_password: ${grafana_admin_password}
+    
+    users:
+      allow_sign_up: false
+    
+    auth.anonymous:
+      enabled: false
+  
+  # Default dashboards
+  defaultDashboardsEnabled: true
+  defaultDashboardsTimezone: UTC
+  
+  # Additional dashboards
+  dashboardProviders:
+    dashboardproviders.yaml:
+      apiVersion: 1
+      providers:
+      - name: 'default'
+        orgId: 1
+        folder: ''
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/default
+      - name: 'kong'
+        orgId: 1
+        folder: 'Kong'
+        type: file
+        disableDeletion: false
+        editable: true
+        options:
+          path: /var/lib/grafana/dashboards/kong
+  
+  # Data sources
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://prometheus-prometheus-server:9090
+        access: proxy
+        isDefault: true
+      - name: Alertmanager
+        type: alertmanager
+        url: http://prometheus-alertmanager:9093
+        access: proxy
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 472
+    fsGroup: 472
+
+# Node Exporter
+nodeExporter:
+  enabled: true
+  resources:
+    limits:
+      cpu: 200m
+      memory: 50Mi
+    requests:
+      cpu: 100m
+      memory: 30Mi
+
+# kube-state-metrics
+kubeStateMetrics:
+  enabled: true
+
+# CoreDNS monitoring
+coreDns:
+  enabled: true
+
+# kubeDns monitoring (for older clusters)
+kubeDns:
+  enabled: false
+
+# kubeApiServer monitoring
+kubeApiServer:
+  enabled: true
+
+# kubeControllerManager monitoring
+kubeControllerManager:
+  enabled: true
+
+# kubeScheduler monitoring
+kubeScheduler:
+  enabled: true
+
+# kubeProxy monitoring
+kubeProxy:
+  enabled: true
+
+# kubelet monitoring
+kubelet:
+  enabled: true
+
+# Default rules
+defaultRules:
+  create: true
+  rules:
+    alertmanager: true
+    etcd: true
+    general: true
+    k8s: true
+    kubeApiserver: true
+    kubeApiserverAvailability: true
+    kubeApiserverError: true
+    kubeApiserverSlos: true
+    kubelet: true
+    kubeProxy: true
+    kubePrometheusGeneral: true
+    kubePrometheusNodeAlerting: true
+    kubePrometheusNodeRecording: true
+    kubernetesAbsent: true
+    kubernetesApps: true
+    kubernetesResources: true
+    kubernetesStorage: true
+    kubernetesSystem: true
+    kubeScheduler: true
+    kubeStateMetrics: true
+    network: true
+    node: true
+    prometheus: true
+    prometheusOperator: true
+    time: true
+
+# Global labels
+commonLabels:
+  cluster: ${cluster_name}
+  environment: ${environment}
+  managed-by: terraform

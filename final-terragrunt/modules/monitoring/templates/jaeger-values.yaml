@@ -1,0 +1,116 @@
+# Jaeger Distributed Tracing Configuration
+
+# Storage configuration
+provisionDataStore:
+  cassandra: false
+  elasticsearch: false
+  kafka: false
+
+# All-in-one deployment for development/testing
+allInOne:
+  enabled: true
+  image: jaegertracing/all-in-one:latest
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  
+  # Storage configuration
+  args:
+    - --memory.max-traces=50000
+    - --query.base-path=/
+    - --log-level=info
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    ports:
+      - name: jaeger-query
+        port: 16686
+        targetPort: 16686
+      - name: jaeger-collector
+        port: 14268
+        targetPort: 14268
+      - name: jaeger-agent
+        port: 14267
+        targetPort: 14267
+      - name: zipkin
+        port: 9411
+        targetPort: 9411
+
+# Agent configuration (disabled in all-in-one mode)
+agent:
+  enabled: false
+
+# Collector configuration (disabled in all-in-one mode)
+collector:
+  enabled: false
+
+# Query configuration (disabled in all-in-one mode)
+query:
+  enabled: false
+
+# Ingester configuration (disabled in all-in-one mode)
+ingester:
+  enabled: false
+
+# Storage configuration
+storage:
+  type: ${jaeger_storage_type}
+
+%{ if jaeger_storage_type == "elasticsearch" }
+elasticsearch:
+  replicas: 1
+  minimumMasterNodes: 1
+  resources:
+    requests:
+      cpu: 100m
+      memory: 1Gi
+    limits:
+      cpu: 500m
+      memory: 2Gi
+%{ endif }
+
+%{ if jaeger_storage_type == "cassandra" }
+cassandra:
+  config:
+    cluster_size: 3
+    seed_size: 1
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 0.5
+    limits:
+      memory: 4Gi
+      cpu: 1
+%{ endif }
+
+# Service Monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  additionalLabels:
+    app: jaeger
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Labels
+commonLabels:
+  app: jaeger
+  environment: ${environment}
+  cluster: ${cluster_name}
+  managed-by: terraform

@@ -1,0 +1,48 @@
+---
+# Simple Prometheus instance without persistent storage for testing
+apiVersion: monitoring.coreos.com/v1
+kind: Prometheus
+metadata:
+  name: prometheus-simple
+  namespace: monitoring
+  labels:
+    app: prometheus-simple
+spec:
+  serviceAccountName: prometheus
+  serviceMonitorSelector:
+    matchLabels:
+      team: frontend
+  ruleSelector:
+    matchLabels:
+      team: frontend
+      role: alert-rules
+  resources:
+    requests:
+      memory: 200Mi
+      cpu: 100m
+    limits:
+      memory: 400Mi  
+      cpu: 200m
+  retention: 2h  # Short retention for testing
+  replicas: 1
+  logLevel: info
+  portName: web
+---
+# Service for simple Prometheus
+apiVersion: v1
+kind: Service
+metadata:
+  name: prometheus-simple
+  namespace: monitoring
+  labels:
+    app: prometheus-simple
+spec:
+  type: ClusterIP
+  ports:
+  - name: web
+    port: 9090
+    targetPort: web
+  selector:
+    app.kubernetes.io/name: prometheus
+    app.kubernetes.io/instance: prometheus-simple
+    prometheus: prometheus-simple

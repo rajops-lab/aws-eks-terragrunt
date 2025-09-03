@@ -1,0 +1,64 @@
+# Kong Ingress Controller Configuration
+
+# Deployment configuration
+ingressController:
+  enabled: true
+  image:
+    repository: kong/kubernetes-ingress-controller
+    tag: "2.12"
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Environment variables
+  env:
+    kong_admin_url: "http://kong-kong-admin:8001"
+    kong_workspace: default
+    publish_service: kong/kong-kong-proxy
+    kong_admin_tls_skip_verify: "true"
+  
+  # Service account
+  serviceAccount:
+    create: true
+    name: kong-ingress-controller
+  
+  # RBAC
+  rbac:
+    create: true
+  
+  # Leader election
+  leaderElection: true
+  
+  # Ingress class
+  ingressClass: kong
+  
+  # Admission webhook
+  admissionWebhook:
+    enabled: true
+    failurePolicy: Fail
+    
+# Disable other Kong components for ingress controller
+proxy:
+  enabled: false
+  
+admin:
+  enabled: false
+
+manager:
+  enabled: false
+
+postgresql:
+  enabled: false
+
+# Labels
+commonLabels:
+  app: kong-ingress-controller
+  environment: ${environment}
+  cluster: ${cluster_name}
+  managed-by: terraform

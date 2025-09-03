@@ -1,0 +1,247 @@
+# Kong API Gateway Configuration
+
+# Deployment configuration
+replicaCount: 2
+
+# Image configuration
+image:
+  repository: kong
+  tag: "3.5"
+  pullPolicy: IfNotPresent
+
+# Kong environment variables
+env:
+  database: "off"  # DB-less mode
+  nginx_worker_processes: "2"
+  proxy_access_log: /dev/stdout
+  admin_access_log: /dev/stdout
+  admin_gui_access_log: /dev/stdout
+  portal_api_access_log: /dev/stdout
+  proxy_error_log: /dev/stderr
+  admin_error_log: /dev/stderr
+  admin_gui_error_log: /dev/stderr
+  portal_api_error_log: /dev/stderr
+  prefix: /kong_prefix/
+  
+  # Admin API configuration
+  admin_listen: "0.0.0.0:8001"
+  admin_gui_url: "http://localhost:8002"
+  
+%{ if kong_manager_enabled }
+  # Kong Manager (Enterprise GUI)
+  admin_gui_listen: "0.0.0.0:8002"
+%{ endif }
+
+# Migration jobs (not needed for DB-less mode)
+migrations:
+  preUpgrade: false
+  postUpgrade: false
+
+# Proxy service configuration
+proxy:
+  enabled: true
+  type: ${kong_proxy_type}
+  http:
+    enabled: true
+    servicePort: 80
+    containerPort: 8000
+  https:
+    enabled: true
+    servicePort: 443
+    containerPort: 8443
+  
+  # Load balancer annotations for AWS
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "tcp"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
+  
+  # Ingress configuration
+  ingress:
+    enabled: false  # We'll create custom ingress rules
+
+%{ if kong_admin_enabled }
+# Admin API service
+admin:
+  enabled: true
+  type: ${kong_admin_type}
+  http:
+    enabled: true
+    servicePort: 8001
+    containerPort: 8001
+  
+  # Ingress for Admin API
+  ingress:
+    enabled: false
+    ingressClassName: nginx
+    hosts:
+      - host: kong-admin.local
+        paths:
+          - path: /
+            pathType: Prefix
+%{ endif }
+
+%{ if kong_manager_enabled }
+# Kong Manager service
+manager:
+  enabled: true
+  type: ClusterIP
+  http:
+    enabled: true
+    servicePort: 8002
+    containerPort: 8002
+  
+  # Ingress for Kong Manager
+  ingress:
+    enabled: ${kong_ingress_enabled}
+    ingressClassName: nginx
+    hosts:
+      - host: ${kong_ingress_host}
+        paths:
+          - path: /
+            pathType: Prefix
+%{ endif }
+
+# Portal API (Enterprise feature)
+portal:
+  enabled: false
+
+# Status service for health checks
+status:
+  enabled: true
+  http:
+    enabled: true
+    containerPort: 8100
+
+# Cluster service (not needed for DB-less)
+cluster:
+  enabled: false
+
+# Enterprise features
+enterprise:
+  enabled: false
+
+# Resource limits
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# Auto scaling
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: true
+  maxUnavailable: 1
+
+# Security context
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+
+# Container security context
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+    - ALL
+
+# Health checks
+livenessProbe:
+  httpGet:
+    path: "/status"
+    port: status
+    scheme: HTTP
+  initialDelaySeconds: 5
+  timeoutSeconds: 5
+  periodSeconds: 10
+  successThreshold: 1
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: "/status/ready"
+    port: status
+    scheme: HTTP
+  initialDelaySeconds: 5
+  timeoutSeconds: 5
+  periodSeconds: 10
+  successThreshold: 1
+  failureThreshold: 3
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  interval: 30s
+  namespace: monitoring
+  labels:
+    app: kong
+  
+# Init containers (if needed)
+waitImage:
+  enabled: false
+
+# Certificates (if needed for HTTPS)
+certificates:
+  enabled: false
+
+# Secret volumes (for certificates or other secrets)
+secretVolumes: []
+
+# Custom plugins
+plugins: {}
+
+# Kong configuration as ConfigMap
+dblessConfig:
+  configMap: kong-declarative-config
+  config: |
+    _format_version: "3.0"
+    _transform: true
+    
+    services:
+    - name: echo-service
+      url: http://echo-server.default.svc.cluster.local:8080
+      routes:
+      - name: echo-route
+        paths:
+        - /echo
+        strip_path: false
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Pod annotations
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "8100"
+  prometheus.io/path: "/metrics"
+
+# Service annotations
+serviceAnnotations: {}
+
+# Labels
+labels:
+  app: kong
+  environment: ${environment}
+  cluster: ${cluster_name}
+  managed-by: terraform

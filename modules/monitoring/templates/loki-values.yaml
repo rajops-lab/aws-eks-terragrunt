@@ -1,0 +1,150 @@
+# Loki Log Aggregation Configuration
+# Using loki-stack chart which includes Loki, Promtail, and Grafana
+
+# Loki configuration
+loki:
+  enabled: true
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+  # Persistence
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: ${loki_storage_size}
+  
+  # Configuration
+  config:
+    auth_enabled: false
+    server:
+      http_listen_port: 3100
+    
+    ingester:
+      lifecycler:
+        address: 127.0.0.1
+        ring:
+          kvstore:
+            store: inmemory
+          replication_factor: 1
+        final_sleep: 0s
+      chunk_idle_period: 5m
+      chunk_retain_period: 30s
+      max_transfer_retries: 0
+    
+    schema_config:
+      configs:
+        - from: 2020-10-24
+          store: boltdb
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 168h
+    
+    storage_config:
+      boltdb:
+        directory: /data/loki/index
+      filesystem:
+        directory: /data/loki/chunks
+    
+    limits_config:
+      enforce_metric_name: false
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+    
+    chunk_store_config:
+      max_look_back_period: 0s
+    
+    table_manager:
+      retention_deletes_enabled: false
+      retention_period: 0s
+  
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 3100
+  
+  # Security context
+  securityContext:
+    fsGroup: 10001
+    runAsGroup: 10001
+    runAsNonRoot: true
+    runAsUser: 10001
+
+# Promtail (log collector)
+promtail:
+  enabled: true
+  
+  # Resource limits
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+  
+  # Configuration
+  config:
+    lokiAddress: http://{{ include "loki.fullname" . }}:3100/loki/api/v1/push
+    snippets:
+      pipelineStages:
+        - docker: {}
+        - match:
+            selector: '{name="kong"}'
+            stages:
+              - json:
+                  expressions:
+                    timestamp: time
+                    level: level
+                    message: msg
+              - timestamp:
+                  source: timestamp
+                  format: RFC3339
+        - match:
+            selector: '{name=~"prometheus.*"}'
+            stages:
+              - regex:
+                  expression: '^(?P<timestamp>\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z)\s+(?P<level>\w+)\s+(?P<message>.*)$'
+              - timestamp:
+                  source: timestamp
+                  format: RFC3339
+
+# Grafana (disabled as we have our own Grafana)
+grafana:
+  enabled: false
+
+# Fluent Bit (alternative log collector)
+fluent-bit:
+  enabled: false
+
+# File log (for debugging)
+filebeat:
+  enabled: false
+
+# Log retention
+logcli:
+  enabled: false
+
+# Service monitor for Prometheus
+serviceMonitor:
+  enabled: true
+  namespace: monitoring
+  labels:
+    app: loki
+  interval: 15s
+  scrapeTimeout: 10s
+
+# Labels
+labels:
+  app: loki
+  environment: ${environment}
+  cluster: ${cluster_name}
+  managed-by: terraform
